@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NavVision — Autonomous Driving Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    --bg:#0a0d12;
+    --cyan:#3fe0ff;
+    --green:#3dffa8;
+    --amber:#ffc24a;
+    --red:#ff4f60;
+    --txt:#e8f1f8;
+    --panel:rgba(10,15,22,.62);
+    --line:rgba(120,190,220,.22);
+  }
+  *,*::before,*::after{box-sizing:inherit}
+  html,body{height:100%;margin:0;background:var(--bg);overflow:hidden}
+  body{
+    font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:#e6f2f8; -webkit-font-smoothing:antialiased;
+  }
+  #wrap{position:relative;width:100%;height:100%;overflow:hidden}
+  canvas#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .hud{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .hud.hidden{opacity:0}
+  .hud{transition:opacity .3s ease}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 8px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+
+  /* ---- brand ---- */
+  #brand{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:9px;padding:7px 14px;
+    letter-spacing:.14em;
+  }
+  #brand .mark{width:16px;height:16px;border:2px solid var(--cyan);border-radius:50%;position:relative;flex:none}
+  #brand .mark::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+  #brand b{font-family:Inter,system-ui,sans-serif;font-weight:800;font-size:13px}
+  #brand span{font-size:9.5px;opacity:.55;letter-spacing:.2em}
+
+  /* ---- left status ---- */
+  #status{position:absolute;top:14px;left:14px;width:250px;padding:11px 12px 10px}
+  .ttl{font-size:9px;letter-spacing:.22em;opacity:.5;margin-bottom:8px;display:flex;justify-content:space-between}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10.5px;padding:3.5px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  .row:last-child{border-bottom:0}
+  .row .k{opacity:.62;letter-spacing:.06em}
+  .row .v{font-weight:700;letter-spacing:.06em;display:flex;align-items:center;gap:5px}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+  .c-off{color:#7c8a95}.c-on{color:var(--green)}.c-cy{color:var(--cyan)}.c-am{color:var(--amber)}.c-rd{color:var(--red)}
+  .blink{animation:bl 1s steps(1,end) infinite}
+  @keyframes bl{50%{opacity:.25}}
+
+  /* ---- right gauges ---- */
+  #gauges{position:absolute;top:14px;right:14px;width:176px;padding:11px 12px}
+  .big{display:flex;align-items:baseline;gap:6px}
+  .big .n{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .big .u{font-size:9px;opacity:.5;letter-spacing:.18em}
+  .bar{height:4px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden;margin:6px 0 10px}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));width:0%;transition:width .12s linear}
+  #riskbar i{background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
+  #radar{display:block;width:100%;height:150px;margin-top:8px;border-radius:7px;background:rgba(0,0,0,.35);border:1px solid rgba(120,190,220,.14)}
+
+  /* ---- scene caption ---- */
+  #caption{position:absolute;left:14px;bottom:62px;padding:8px 13px;max-width:min(62vw,520px)}
+  #caption .sn{font-size:9px;letter-spacing:.24em;color:var(--cyan);opacity:.85}
+  #caption .st{font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:14px;margin-top:3px;letter-spacing:.01em}
+  #caption .sd{font-size:10px;opacity:.6;margin-top:3px;line-height:1.45}
+
+  /* ---- banner ---- */
+  #banner{
+    position:absolute;left:50%;top:78px;transform:translate(-50%,-8px);
+    padding:9px 18px;border-radius:8px;font-size:12px;font-weight:700;letter-spacing:.08em;
+    border:1px solid currentColor;background:rgba(12,6,8,.62);backdrop-filter:blur(8px);
+    opacity:0;transition:opacity .35s ease,transform .35s ease;white-space:nowrap;
+  }
+  #banner.show{opacity:1;transform:translate(-50%,0)}
+  #banner .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:9px;vertical-align:1px;animation:pp 1s ease-in-out infinite}
+  @keyframes pp{50%{opacity:.2;transform:scale(.7)}}
+
+  /* ---- final checklist ---- */
+  #final{position:absolute;right:14px;bottom:62px;width:246px;padding:12px;opacity:0;transform:translateY(10px);transition:all .5s cubic-bezier(.2,.8,.2,1)}
+  #final.show{opacity:1;transform:translateY(0)}
+  #final .fr{display:flex;align-items:center;gap:9px;font-size:11px;padding:4px 0;opacity:0;transform:translateX(8px);transition:all .4s ease}
+  #final .fr.on{opacity:1;transform:none}
+  #final .fr b{color:var(--green);font-size:12px}
+  #final .ctrl{margin-top:9px;padding-top:8px;border-top:1px solid var(--line);font-size:10.5px;display:flex;justify-content:space-between}
+
+  /* ---- timeline + controls ---- */
+  #controls{
+    position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:7px;padding:7px 9px;pointer-events:auto;
+    max-width:calc(100vw - 20px);flex-wrap:wrap;justify-content:center;
+  }
+  button{
+    font-family:inherit;font-size:10.5px;letter-spacing:.1em;color:#d8eaf2;
+    background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:6px;
+    padding:6px 11px;cursor:pointer;transition:.15s;
+  }
+  button:hover{background:rgba(63,224,255,.16);border-color:var(--cyan);color:#fff}
+  button.on{background:rgba(63,224,255,.2);border-color:var(--cyan);color:#fff}
+  #time{font-size:10px;opacity:.6;padding:0 6px;font-variant-numeric:tabular-nums}
+  #prog{position:absolute;left:0;right:0;top:0;height:2px;background:rgba(255,255,255,.08);overflow:hidden}
+  #prog i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--green))}
+
+  #err{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:24px;font-size:13px;line-height:1.6}
+
+  @media (max-width:760px){
+    #status{width:190px;padding:9px 10px} .row{font-size:9px}
+    #gauges{width:132px;padding:9px 10px} .big .n{font-size:22px} #radar{height:104px}
+    #caption{bottom:56px;max-width:74vw} #caption .st{font-size:11.5px} #caption .sd{display:none}
+    #final{width:190px;bottom:104px} #final .fr{font-size:9.5px}
+    #banner{font-size:10px;padding:7px 12px;white-space:normal;max-width:84vw;text-align:center}
+    #brand{top:auto;bottom:calc(52px + env(safe-area-inset-bottom,0px));}
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="scene"></canvas>
+
+  <div class="hud" id="hud">
+    <div id="prog"><i></i></div>
+
+    <div id="brand" class="panel"><span class="mark"></span><b>NavVision</b><span>AD SIM v1.0</span></div>
+
+    <div id="status" class="panel">
+      <div class="ttl"><span>PERCEPTION / PLANNING STACK</span><span id="fps">—</span></div>
+      <div class="row"><span class="k">OBJECT DETECTION</span><span class="v c-off" id="r-det"><i class="dot"></i>STANDBY</span></div>
+      <div class="row"><span class="k">OBJECT TRACKING</span><span class="v c-off" id="r-trk"><i class="dot"></i>STANDBY</span></div>
+      <div class="row"><span class="k">COLLISION RISK</span><span class="v c-on" id="r-risk"><i class="dot"></i>LOW</span></div>
+      <div class="row"><span class="k">DISTANCE</span><span class="v c-cy" id="r-dist">— m</span></div>
+      <div class="row"><span class="k">TTC</span><span class="v c-cy" id="r-ttc">— s</span></div>
+      <div class="row"><span class="k">PATH PLANNER</span><span class="v c-off" id="r-plan"><i class="dot"></i>IDLE</span></div>
+      <div class="row"><span class="k">TARGET LANE</span><span class="v c-off" id="r-lane">LANE 1 (HOLD)</span></div>
+      <div class="row"><span class="k">CONTROL MODE</span><span class="v c-on" id="r-mode"><i class="dot"></i>AUTONOMOUS</span></div>
+    </div>
+
+    <div id="gauges" class="panel">
+      <div class="ttl"><span>EGO VEHICLE</span><span>ID 001</span></div>
+      <div class="big"><span class="n" id="g-spd">0</span><span class="u">KM/H</span></div>
+      <div class="bar" id="spdbar"><i></i></div>
+      <div class="ttl" style="margin-bottom:4px"><span>RISK INDEX</span><span id="g-risk">0%</span></div>
+      <div class="bar" id="riskbar"><i></i></div>
+      <canvas id="radar"></canvas>
+    </div>
+
+    <div id="banner"><span class="pulse"></span><span id="banner-t"></span></div>
+
+    <div id="caption" class="panel">
+      <div class="sn" id="c-num">SCENE 1 / 7</div>
+      <div class="st" id="c-ttl">NORMAL AUTONOMOUS CRUISE</div>
+      <div class="sd" id="c-dsc">Ego vehicle maintaining lane and set speed. Surrounding traffic nominal.</div>
+    </div>
+
+    <div id="final" class="panel">
+      <div class="ttl"><span>MISSION SUMMARY</span><span>NAVVISION</span></div>
+      <div class="fr" id="f0"><b>✓</b><span>OBJECT DETECTED</span></div>
+      <div class="fr" id="f1"><b>✓</b><span>RISK ANALYZED</span></div>
+      <div class="fr" id="f2"><b>✓</b><span>SAFE TRAJECTORY PLANNED</span></div>
+      <div class="fr" id="f3"><b>✓</b><span>COLLISION AVOIDED</span></div>
+      <div class="ctrl"><span style="opacity:.6">AUTONOMOUS CONTROL</span><span class="c-on" style="font-weight:700">ACTIVE</span></div>
+    </div>
+  </div>
+
+  <div id="controls" class="panel">
+    <button id="b-play">⏸ PAUSE</button>
+    <button id="b-restart">↻ RESTART</button>
+    <span id="time">00.0 / 30.0s</span>
+    <button class="cam on" data-cam="chase">CHASE</button>
+    <button class="cam" data-cam="cine">CINEMATIC</button>
+    <button class="cam" data-cam="top">TOP-DOWN</button>
+    <button id="b-hud">HIDE HUD</button>
+  </div>
+
+  <div id="err">WebGL / three.js could not start in this browser.<br>Try a desktop browser with hardware acceleration enabled.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+if(!window.THREE){document.getElementById('err').style.display='grid';return;}
+
+/* ============================ CONFIG ============================ */
+const LANE_W   = 3.6;
+const LANE1_X  = -1.8;          // ego start lane
+const LANE2_X  =  1.8;          // adjacent (safe) lane
+const CRUISE   = 25;            // m/s  (~90 km/h)
+const OBS_V    = 11;            // m/s  (~40 km/h) slow lead vehicle
+const MAN_LEN  = 46;            // metres consumed by lane change
+const DURATION = 30;
+
+const T = { detect:5.0, track:8.0, brake:11.0, plan:14.5, exec:17.0, safe:21.5, summary:23.5 };
+
+/* ============================ SCENE ============================ */
+const canvas = document.getElementById('scene');
+let renderer;
+try{
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+}catch(e){ document.getElementById('err').style.display='grid'; return; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
+
+const SKY = 0x9fc2e0;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 180, 780);
+
+const camera = new THREE.PerspectiveCamera(46, 16/9, 0.5, 3000);
+
+/* lighting */
+scene.add(new THREE.HemisphereLight(0xcfe4ff, 0x59603f, 0.85));
+const sun = new THREE.DirectionalLight(0xfff3dd, 1.55);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-45; sun.shadow.camera.right=45;
+sun.shadow.camera.top=45;   sun.shadow.camera.bottom=-45;
+sun.shadow.camera.near=1;   sun.shadow.camera.far=220;
+sun.shadow.bias = -0.0008;
+scene.add(sun); scene.add(sun.target);
+
+/* ---------- ground / road ---------- */
+function noiseTex(){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d'); const img=x.createImageData(128,128);
+  for(let i=0;i<128*128;i++){ const v=118+Math.random()*30|0;
+    img.data[i*4]=v; img.data[i*4+1]=v; img.data[i*4+2]=v+3; img.data[i*4+3]=255; }
+  x.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+const ROAD_LEN = 3000, ROAD_Z = 1180;
+
+const grass = new THREE.Mesh(
+  new THREE.PlaneGeometry(1400, ROAD_LEN+400),
+  new THREE.MeshStandardMaterial({color:0x5d6a45, roughness:1}));
+grass.rotation.x = -Math.PI/2; grass.position.set(0,-0.03,ROAD_Z); grass.receiveShadow = true;
+scene.add(grass);
+
+const asphalt = noiseTex(); asphalt.repeat.set(3, 700);
+const road = new THREE.Mesh(
+  new THREE.PlaneGeometry(10.8, ROAD_LEN),
+  new THREE.MeshStandardMaterial({color:0x33373e, roughness:.93, metalness:.02, map:asphalt}));
+road.rotation.x=-Math.PI/2; road.position.set(0,0,ROAD_Z); road.receiveShadow=true;
+scene.add(road);
+
+const shoulder = new THREE.Mesh(
+  new THREE.PlaneGeometry(14.4, ROAD_LEN),
+  new THREE.MeshStandardMaterial({color:0x4a4a44, roughness:1}));
+shoulder.rotation.x=-Math.PI/2; shoulder.position.set(0,-0.012,ROAD_Z); shoulder.receiveShadow=true;
+scene.add(shoulder);
+
+const paint = new THREE.MeshStandardMaterial({color:0xf2f4f0, roughness:.6, emissive:0x222222});
+[-5.25, 5.25].forEach(x=>{
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.18, ROAD_LEN), paint);
+  m.rotation.x=-Math.PI/2; m.position.set(x, 0.015, ROAD_Z); scene.add(m);
+});
+// centre dashes
+{
+  const g = new THREE.PlaneGeometry(0.16, 3.2); g.rotateX(-Math.PI/2);
+  const n = Math.floor(ROAD_LEN/11);
+  const inst = new THREE.InstancedMesh(g, paint, n); const m4 = new THREE.Matrix4();
+  for(let i=0;i<n;i++){ m4.makeTranslation(0, 0.016, -300 + i*11); inst.setMatrixAt(i, m4); }
+  inst.instanceMatrix.needsUpdate = true; scene.add(inst);
+}
+// guard rails
+[-6.9, 6.9].forEach(x=>{
+  const r = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.34, ROAD_LEN),
+    new THREE.MeshStandardMaterial({color:0xb9c0c6, roughness:.5, metalness:.6}));
+  r.position.set(x, 0.72, ROAD_Z); r.castShadow = true; scene.add(r);
+  const pg = new THREE.BoxGeometry(0.12,0.9,0.12);
+  const pm = new THREE.MeshStandardMaterial({color:0x8d949a, roughness:.7, metalness:.4});
+  const n = Math.floor(ROAD_LEN/16);
+  const pi = new THREE.InstancedMesh(pg, pm, n); const m4=new THREE.Matrix4();
+  for(let i=0;i<n;i++){ m4.makeTranslation(x, 0.45, -300+i*16); pi.setMatrixAt(i,m4); }
+  pi.instanceMatrix.needsUpdate=true; scene.add(pi);
+});
+// light poles + trees
+{
+  const poleM = new THREE.MeshStandardMaterial({color:0x9aa2a8, roughness:.6, metalness:.5});
+  for(let z=-200; z<1500; z+=48){
+    for(const s of [-1,1]){
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(.09,.13,8.5,8), poleM);
+      p.position.set(s*8.6, 4.25, z); p.castShadow=true; scene.add(p);
+      const a = new THREE.Mesh(new THREE.BoxGeometry(1.7,.14,.18), poleM);
+      a.position.set(s*7.8, 8.3, z); scene.add(a);
+    }
+  }
+  const trunkM = new THREE.MeshStandardMaterial({color:0x5a4634, roughness:1});
+  const leafM  = new THREE.MeshStandardMaterial({color:0x3f5c34, roughness:1});
+  for(let i=0;i<120;i++){
+    const s = Math.random()<.5?-1:1;
+    const x = s*(14 + Math.random()*70), z = -200 + Math.random()*1700;
+    const h = 4+Math.random()*5;
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,h*.45,6), trunkM);
+    t.position.set(x, h*.22, z); scene.add(t);
+    const l = new THREE.Mesh(new THREE.ConeGeometry(1.5+Math.random(), h, 7), leafM);
+    l.position.set(x, h*.45+h*.42, z); l.castShadow=true; scene.add(l);
+  }
+}
+
+/* ---------- vehicle factory ---------- */
+function buildCar(opt){
+  opt = opt||{};
+  const g = new THREE.Group();
+  const col = opt.color!==undefined?opt.color:0xcccccc;
+  const body  = new THREE.MeshStandardMaterial({color:col, roughness:.32, metalness:.55});
+  const dark  = new THREE.MeshStandardMaterial({color:0x1b2026, roughness:.55, metalness:.4});
+  const glass = new THREE.MeshStandardMaterial({color:0x121a22, roughness:.12, metalness:.75, transparent:true, opacity:.9});
+  const L = opt.len||4.5, W = opt.wid||1.88;
+
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(W, .62, L), body);
+  lower.position.y = .62; lower.castShadow = true; g.add(lower);
+
+  const mid = new THREE.Mesh(new THREE.BoxGeometry(W*.99, .3, L*.92), body);
+  mid.position.y = 1.0; mid.castShadow = true; g.add(mid);
+
+  if(opt.type === 'truck'){
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(W*1.02, 1.25, 2.0), body);
+    cab.position.set(0, 1.55, L*.5 - 1.05); cab.castShadow = true; g.add(cab);
+    const wind = new THREE.Mesh(new THREE.BoxGeometry(W*.9, .62, .12), glass);
+    wind.position.set(0, 1.85, L*.5 - .08); g.add(wind);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(W*1.04, 1.95, L*.56),
+      new THREE.MeshStandardMaterial({color:opt.boxColor||0xd9dde2, roughness:.7, metalness:.2}));
+    box.position.set(0, 1.9, -L*.2); box.castShadow = true; g.add(box);
+  }else{
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(W*.9, .56, L*.44), glass);
+    cabin.position.set(0, 1.42, -L*.02); cabin.castShadow = true; g.add(cabin);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(W*.84, .1, L*.38), body);
+    roof.position.set(0, 1.7, -L*.04); roof.castShadow = true; g.add(roof);
+  }
+
+  // wheels
+  const wg = new THREE.CylinderGeometry(.36,.36,.26,16); wg.rotateZ(Math.PI/2);
+  const wm = new THREE.MeshStandardMaterial({color:0x14171b, roughness:.85});
+  const wheels = [];
+  [[-1,1],[1,1],[-1,-1],[1,-1]].forEach(p=>{
+    const w = new THREE.Mesh(wg, wm);
+    w.position.set(p[0]*(W/2-.03), .36, p[1]*(L*.32)); w.castShadow = true;
+    g.add(w); wheels.push(w);
+  });
+  g.userData.wheels = wheels;
+
+  // lights
+  const hl = new THREE.MeshBasicMaterial({color:0xfff6da});
+  const tl = new THREE.MeshBasicMaterial({color:0xff3a32});
+  [[-1],[1]].forEach(p=>{
+    const a = new THREE.Mesh(new THREE.BoxGeometry(.34,.12,.08), hl);
+    a.position.set(p[0]*(W/2-.34), .78, L/2+.01); g.add(a);
+    const b = new THREE.Mesh(new THREE.BoxGeometry(.36,.13,.08), tl);
+    b.position.set(p[0]*(W/2-.34), .82, -L/2-.01); g.add(b);
+  });
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(W*.62,.06,.07), dark));
+
+  if(opt.ego){
+    // sensor pod + rotating lidar
+    const pod = new THREE.Mesh(new THREE.BoxGeometry(.9,.14,.5),
+      new THREE.MeshStandardMaterial({color:0x2a3138, roughness:.5, metalness:.6}));
+    pod.position.set(0,1.79,-.2); g.add(pod);
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(.16,.16,.22,14),
+      new THREE.MeshStandardMaterial({color:0x10151a, roughness:.3, metalness:.8,
+        emissive:0x0d3d4a, emissiveIntensity:.8}));
+    lid.position.set(0,1.97,-.2); g.add(lid); g.userData.lidar = lid;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(W+.02,.07,L*.8),
+      new THREE.MeshStandardMaterial({color:0x3fe0ff, emissive:0x1b7e96, emissiveIntensity:.9, roughness:.4}));
+    stripe.position.y=.95; g.add(stripe);
+  }
+  return g;
+}
+
+/* ---------- vehicles ---------- */
+const V = [];
+function addVeh(o){
+  const mesh = buildCar(o);
+  scene.add(mesh);
+  const v = Object.assign({mesh, x:o.x, z:o.z, v:o.v, desired:o.desired!==undefined?o.desired:o.v,
+                           yaw:0, len:o.len||4.5, isEgo:!!o.ego, isObs:!!o.obs}, {});
+  V.push(v); return v;
+}
+
+const ego = addVeh({ego:true, color:0xf2f5f8, x:LANE1_X, z:0, v:CRUISE, desired:CRUISE, len:4.6});
+const obs = addVeh({obs:true, type:'truck', color:0xb8352f, boxColor:0xe2e6ea,
+                    x:LANE2_X, z:180, v:OBS_V, desired:OBS_V, len:7.4, wid:2.2});
+
+const traffic = [
+  addVeh({color:0x2b6fb8, x:LANE2_X, z:300,  v:26, desired:26}),
+  addVeh({color:0x3c4148, x:LANE1_X, z:420,  v:25, desired:25}),
+  addVeh({color:0xd9c14a, x:LANE2_X, z:560,  v:27, desired:27}),
+  addVeh({color:0x8c9299, x:LANE1_X, z:700,  v:26, desired:26}),
+  addVeh({color:0x2f7d5c, x:LANE2_X, z:-210, v:14, desired:20}),
+  addVeh({color:0x7b3f8f, x:LANE1_X, z:-330, v:13, desired:19})
+];
+
+/* ---------- detection bracket box ---------- */
+function cornerBox(w,h,l,color){
+  const hx=w/2, hy=h/2, hz=l/2, a=Math.min(w,h,l)*0.30;
+  const pts=[];
+  for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1]){
+    const p=[sx*hx, sy*hy, sz*hz];
+    pts.push(p[0],p[1],p[2], p[0]-sx*a, p[1], p[2]);
+    pts.push(p[0],p[1],p[2], p[0], p[1]-sy*a, p[2]);
+    pts.push(p[0],p[1],p[2], p[0], p[1], p[2]-sz*a);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({color, transparent:true, opacity:0}));
+}
+const bbox = cornerBox(2.7, 3.3, 8.0, 0x3fe0ff);
+bbox.visible = false; scene.add(bbox);
+
+function labelSprite(){
+  const c=document.createElement('canvas'); c.width=640; c.height=160;
+  const t=new THREE.CanvasTexture(c);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t, transparent:true, opacity:0, depthTest:false}));
+  s.scale.set(5.6,1.4,1);
+  s.userData = {c, ctx:c.getContext('2d'), tex:t, last:''};
+  return s;
+}
+function drawLabel(sp, text, sub, color){
+  if(sp.userData.last === text+sub+color) return;
+  sp.userData.last = text+sub+color;
+  const x = sp.userData.ctx;
+  x.clearRect(0,0,640,160);
+  x.fillStyle='rgba(6,14,20,.82)'; roundRect(x,6,18,628,124,12); x.fill();
+  x.strokeStyle=color; x.lineWidth=3; x.stroke();
+  x.fillStyle=color; x.font='bold 46px "JetBrains Mono", monospace'; x.textBaseline='middle';
+  x.fillText(text, 30, 62);
+  x.fillStyle='rgba(225,242,248,.78)'; x.font='30px "JetBrains Mono", monospace';
+  x.fillText(sub, 30, 108);
+  sp.userData.tex.needsUpdate = true;
+}
+function roundRect(x,a,b,w,h,r){ x.beginPath(); x.moveTo(a+r,b); x.arcTo(a+w,b,a+w,b+h,r);
+  x.arcTo(a+w,b+h,a,b+h,r); x.arcTo(a,b+h,a,b,r); x.arcTo(a,b,a+w,b,r); x.closePath(); }
+const label = labelSprite(); label.visible=false; scene.add(label);
+
+/* ---------- sensor FOV fan ---------- */
+const fov = (function(){
+  const N=26, half=THREE.MathUtils.degToRad(26), R=80;
+  const pos=[0,0,0]; const idx=[];
+  for(let i=0;i<=N;i++){ const a=-half+2*half*i/N; pos.push(Math.sin(a)*R,0,Math.cos(a)*R); }
+  for(let i=1;i<=N;i++) idx.push(0,i,i+1);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx);
+  const m=new THREE.Mesh(g, new THREE.MeshBasicMaterial({color:0x3fe0ff, transparent:true, opacity:0,
+    side:THREE.DoubleSide, depthWrite:false}));
+  scene.add(m); return m;
+})();
+
+/* ---------- planned path ribbon ---------- */
+const PN = 60;
+function chevronTex(){
+  const c=document.createElement('canvas'); c.width=96; c.height=96;
+  const x=c.getContext('2d'); x.clearRect(0,0,96,96);
+  x.fillStyle='rgba(255,255,255,.92)';
+  x.beginPath(); x.moveTo(12,66); x.lineTo(48,26); x.lineTo(84,66);
+  x.lineTo(84,80); x.lineTo(48,40); x.lineTo(12,80); x.closePath(); x.fill();
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1,9); return t;
+}
+const pathGeo = new THREE.BufferGeometry();
+{
+  const pos = new Float32Array((PN+1)*2*3), uv = new Float32Array((PN+1)*2*2), idx=[];
+  for(let i=0;i<PN;i++){ const a=i*2,b=a+1,c=a+2,d=a+3; idx.push(a,b,c, b,d,c); }
+  pathGeo.setAttribute('position', new THREE.BufferAttribute(pos,3).setUsage(THREE.DynamicDrawUsage));
+  pathGeo.setAttribute('uv', new THREE.BufferAttribute(uv,2).setUsage(THREE.DynamicDrawUsage));
+  pathGeo.setIndex(idx);
+}
+const pathFill = new THREE.Mesh(pathGeo, new THREE.MeshBasicMaterial({
+  color:0x3dffa8, transparent:true, opacity:0, depthWrite:false}));
+const chevTex = chevronTex();
+const pathChev = new THREE.Mesh(pathGeo, new THREE.MeshBasicMaterial({
+  map:chevTex, color:0x9dffd5, transparent:true, opacity:0, depthWrite:false}));
+pathFill.renderOrder=2; pathChev.renderOrder=3;
+scene.add(pathFill); scene.add(pathChev);
+
+// target-lane "clear" highlight
+const laneHi = new THREE.Mesh(new THREE.PlaneGeometry(LANE_W-0.35, 70),
+  new THREE.MeshBasicMaterial({color:0x3dffa8, transparent:true, opacity:0, depthWrite:false}));
+laneHi.rotation.x=-Math.PI/2; laneHi.position.y=0.022; scene.add(laneHi);
+
+/* ============================ SIM STATE ============================ */
+const S = {
+  t:0, playing:true, cam:'chase',
+  detected:false, tracking:false, planning:false, committed:false, cleared:false,
+  risk:0, dist:999, prevDist:999, ttc:99,
+  man:{z0:0, x0:LANE1_X, dx:0, active:false}
+};
+const smoother = p => p*p*p*(p*(p*6-15)+10);
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+
+function pathXat(z){
+  const m = S.man;
+  const p = clamp((z - m.z0)/MAN_LEN, 0, 1);
+  return m.x0 + m.dx * smoother(p);
+}
+
+function resetSim(){
+  S.t=0; S.detected=S.tracking=S.planning=S.committed=S.cleared=false;
+  S.risk=0; S.dist=999; S.prevDist=999;
+  S.man={z0:0,x0:LANE1_X,dx:0,active:false};
+  ego.x=LANE1_X; ego.z=0; ego.v=CRUISE; ego.yaw=0;
+  obs.x=LANE2_X; obs.z=180; obs.v=OBS_V;
+  const init=[[LANE2_X,300,26],[LANE1_X,420,25],[LANE2_X,560,27],[LANE1_X,700,26],
+              [LANE2_X,-210,14],[LANE1_X,-330,13]];
+  traffic.forEach((c,i)=>{ c.x=init[i][0]; c.z=init[i][1]; c.v=init[i][2]; c.yaw=0; });
+  bbox.visible=false; bbox.material.opacity=0;
+  label.visible=false; label.material.opacity=0;
+  fov.material.opacity=0; pathFill.material.opacity=0; pathChev.material.opacity=0;
+  laneHi.material.opacity=0;
+  document.getElementById('final').classList.remove('show');
+  for(let i=0;i<4;i++) document.getElementById('f'+i).classList.remove('on');
+}
+
+/* adaptive cruise: clamp target speed by the lead vehicle in the same corridor */
+function accTarget(me, desired){
+  let tgt = desired;
+  for(const o of V){
+    if(o===me) continue;
+    if(Math.abs(o.x - me.x) > 2.0) continue;          // not in my corridor
+    const gap = (o.z - me.z) - (o.len+me.len)/2;
+    if(gap <= 0) continue;
+    if(gap < 58){
+      const f = clamp((gap - 13)/30, 0, 1);
+      tgt = Math.min(tgt, o.v + Math.max(0, desired - o.v)*f*f);
+    }
+  }
+  return tgt;
+}
+
+/* ============================ UPDATE ============================ */
+function step(dt){
+  S.t += dt;
+  const t = S.t;
+
+  /* -- obstacle: slow vehicle cuts into the ego lane -- */
+  const cut = clamp((t - 4.2)/1.8, 0, 1);
+  const prevObsX = obs.x;
+  obs.x = LANE2_X + (LANE1_X - LANE2_X)*smoother(cut);
+  obs.yaw = Math.atan2((obs.x - prevObsX)/Math.max(dt,1e-4), Math.max(obs.v,1));
+
+  /* -- pipeline state machine -- */
+  if(t >= T.detect) S.detected = true;
+  if(t >= T.track)  S.tracking = true;
+  if(t >= T.plan)   S.planning = true;
+  if(t >= T.exec && !S.committed){
+    S.committed = true;
+    S.man = {z0: ego.z + Math.max(8, ego.v*0.6), x0: LANE1_X, dx: LANE2_X-LANE1_X, active:true};
+  }
+
+  /* -- ego longitudinal control -- */
+  let desired = CRUISE;
+  const target = accTarget(ego, desired);
+  const a = clamp((target - ego.v)*1.35, -4.6, 2.3);
+  ego.v = Math.max(0.5, ego.v + a*dt);
+
+  /* -- ego lateral control (follows the planned curve exactly) -- */
+  if(S.committed){
+    const nx = pathXat(ego.z);
+    const slope = (pathXat(ego.z+0.75) - pathXat(ego.z-0.75))/1.5;
+    ego.x = nx;
+    ego.yaw = Math.atan(slope);
+    ego.mesh.rotation.z = -slope*0.30;
+  }else{
+    ego.x += (LANE1_X - ego.x)*Math.min(1, dt*4);
+    ego.yaw *= 0.9; ego.mesh.rotation.z *= 0.9;
+  }
+  ego.z += ego.v*dt;
+
+  /* -- traffic + obstacle -- */
+  for(const c of V){
+    if(c===ego) continue;
+    const tg = accTarget(c, c.desired);
+    c.v += clamp((tg - c.v)*1.2, -5, 2)*dt;
+    c.v = Math.max(1, c.v);
+    c.z += c.v*dt;
+  }
+
+  /* -- hard anti-collision guarantee -- */
+  for(const me of V) for(const o of V){
+    if(me===o) continue;
+    if(Math.abs(o.x-me.x) > 1.9) continue;
+    const gap = (o.z-me.z) - (o.len+me.len)/2;
+    if(gap > 0 && gap < 3.0) me.v = Math.min(me.v, o.v*0.92);
+  }
+
+  /* -- transforms -- */
+  for(const c of V){
+    c.mesh.position.set(c.x, 0, c.z);
+    c.mesh.rotation.y = c.yaw;
+    const spin = c.v*dt/0.36;
+    for(const w of c.mesh.userData.wheels) w.rotation.x -= spin;
+  }
+  if(ego.mesh.userData.lidar) ego.mesh.userData.lidar.rotation.y += dt*7;
+
+  /* -- metrics -- */
+  S.prevDist = S.dist;
+  const raw = (obs.z - ego.z) - (obs.len+ego.len)/2;
+  S.dist = raw;
+  const closing = ego.v - obs.v;
+  const sameLane = Math.abs(obs.x - ego.x) < 2.0;
+  S.ttc = (sameLane && closing > 0.4) ? raw/closing : 99;
+  if(S.committed && Math.abs(ego.x - LANE2_X) < 0.45) S.cleared = true;
+
+  let risk = 0;
+  if(S.detected){
+    if(sameLane && raw < 120) risk = clamp(1 - (S.ttc-1.2)/7, 0, 1)*0.7 + clamp(1-raw/90,0,1)*0.3;
+    if(!sameLane) risk = clamp(risk*0.12, 0, 0.15);
+  }
+  S.risk += (risk - S.risk)*Math.min(1, dt*2.2);
+
+  /* -- detection visuals -- */
+  const bo = S.detected ? clamp((t-T.detect)/0.6,0,1) : 0;
+  bbox.visible = label.visible = bo > 0.01;
+  bbox.material.opacity = bo*0.95; label.material.opacity = bo;
+  bbox.position.set(obs.x, 1.85, obs.z - 0.2); bbox.rotation.y = obs.yaw;
+  label.position.set(obs.x, 4.35, obs.z - 0.2);
+
+  const rc = S.risk>0.66 ? '#ff4f60' : (S.risk>0.33 ? '#ffc24a' : '#3fe0ff');
+  bbox.material.color.set(rc);
+  if(!S.tracking)      drawLabel(label, 'VEHICLE — DETECTED', 'CONF 0.97   CLASS: TRUCK', '#3fe0ff');
+  else if(!S.cleared)  drawLabel(label, 'TRK ID 07 — TRACKING', 'D '+Math.max(0,raw).toFixed(1)+' m   V '+(obs.v*3.6).toFixed(0)+' km/h', rc);
+  else                 drawLabel(label, 'TRK ID 07 — PASSED', 'LATERAL CLEARANCE OK', '#3dffa8');
+
+  fov.position.set(ego.x, 0.028, ego.z + 2.2); fov.rotation.y = ego.yaw;
+  fov.material.opacity += ((S.detected?0.075:0) - fov.material.opacity)*Math.min(1,dt*3);
+
+  /* -- planned trajectory ribbon -- */
+  const showPath = S.planning && !(t > T.safe + 2.2);
+  if(S.planning && !S.committed){
+    S.man = {z0: ego.z + Math.max(8, ego.v*0.6), x0: LANE1_X, dx: LANE2_X-LANE1_X, active:false};
+  }
+  const pOp = showPath ? (S.committed?0.30:0.22) : 0;
+  pathFill.material.opacity += (pOp - pathFill.material.opacity)*Math.min(1,dt*2.5);
+  pathChev.material.opacity += ((showPath?0.85:0) - pathChev.material.opacity)*Math.min(1,dt*2.5);
+  if(pathFill.material.opacity > 0.005){
+    const zs = ego.z + 1.5, ze = S.man.z0 + MAN_LEN + 30;
+    const pos = pathGeo.attributes.position.array, uv = pathGeo.attributes.uv.array;
+    for(let i=0;i<=PN;i++){
+      const f = i/PN, z = zs + (ze-zs)*f;
+      const x = pathXat(z);
+      const sl = (pathXat(z+0.75)-pathXat(z-0.75))/1.5;
+      const nx = 1/Math.sqrt(1+sl*sl), hw = 1.15;
+      const o = i*6;
+      pos[o]   = x - hw*nx; pos[o+1]=0.028; pos[o+2]=z + hw*sl*nx;
+      pos[o+3] = x + hw*nx; pos[o+4]=0.028; pos[o+5]=z - hw*sl*nx;
+      const u = i*4;
+      uv[u]=0; uv[u+1]=f; uv[u+2]=1; uv[u+3]=f;
+    }
+    pathGeo.attributes.position.needsUpdate = true;
+    pathGeo.attributes.uv.needsUpdate = true;
+    pathGeo.computeBoundingSphere();
+    chevTex.offset.y = (chevTex.offset.y - dt*0.75) % 1;
+  }
+  const hiOn = S.planning && !S.cleared;
+  laneHi.material.opacity += ((hiOn ? 0.10+0.05*Math.sin(t*6) : 0) - laneHi.material.opacity)*Math.min(1,dt*3);
+  laneHi.position.set(LANE2_X, 0.021, ego.z + 42);
+
+  /* -- camera -- */
+  updateCamera(dt);
+
+  sun.position.set(ego.x + 38, 62, ego.z + 26);
+  sun.target.position.set(ego.x, 0, ego.z + 10);
+  scene.fog.far = 780;
+}
+
+/* ---------- camera rigs ---------- */
+const camPos = new THREE.Vector3(0,9,-18), camLook = new THREE.Vector3(0,1,10);
+function updateCamera(dt){
+  const k = 1 - Math.pow(0.0015, dt);
+  let want, look;
+  if(S.cam === 'chase'){
+    const lag = THREE.MathUtils.lerp(ego.x, 0, 0.45);
+    want = new THREE.Vector3(lag + 1.1, 7.4, ego.z - 16.5);
+    look = new THREE.Vector3(THREE.MathUtils.lerp(ego.x, obs.x, 0.22), 1.35, ego.z + 26);
+  }else if(S.cam === 'cine'){
+    want = new THREE.Vector3(ego.x + 14.5, 5.2, ego.z - 9.5);
+    look = new THREE.Vector3(ego.x - 1, 1.2, ego.z + 14);
+  }else{
+    want = new THREE.Vector3(0.2, 52, ego.z + 14);
+    look = new THREE.Vector3(0.2, 0, ego.z + 15.2);
+  }
+  camPos.lerp(want, k); camLook.lerp(look, k);
+  camera.position.copy(camPos); camera.lookAt(camLook);
+  camera.up.set(0,1,0);
+}
+
+/* ============================ HUD ============================ */
+const el = id => document.getElementById(id);
+const SCENES = [
+  [0,      'SCENE 1 / 7','NORMAL AUTONOMOUS CRUISE','Ego vehicle holding Lane 1 at set speed. Surrounding traffic nominal.'],
+  [T.detect,'SCENE 2 / 7','PERCEPTION — OBJECT DETECTED','Slow vehicle cuts into the ego lane. Camera + LiDAR fusion returns a 3D bounding box.'],
+  [T.track,'SCENE 3 / 7','TRACKING & COLLISION RISK ANALYSIS','Track ID assigned. Relative velocity and time-to-collision estimated — risk rising.'],
+  [T.brake,'SCENE 4 / 7','EMERGENCY RESPONSE — DECELERATION','Longitudinal controller commands braking to hold a safe following gap.'],
+  [T.plan, 'SCENE 5 / 7','TRAJECTORY PLANNING','Adjacent lane scanned and found clear. Candidate lane-change spline generated.'],
+  [T.exec, 'SCENE 6 / 7','LATERAL CONTROL — LANE CHANGE','Steering controller tracks the planned spline into Lane 2.'],
+  [T.safe, 'SCENE 7 / 7','SAFE DRIVING RESUMED','Obstacle avoided. Heading straightened, speed restored, autonomy active.']
+];
+function setRow(id, cls, txt, dot){
+  const e = el(id); e.className = 'v ' + cls + (dot?' ':'');
+  e.innerHTML = (dot?'<i class="dot"></i>':'') + txt;
+}
+let fpsAcc=0, fpsN=0, fpsT=0;
+function hud(dt){
+  const t = S.t;
+  // scene caption
+  let sc = SCENES[0];
+  for(const s of SCENES) if(t >= s[0]) sc = s;
+  if(el('c-ttl').textContent !== sc[2]){
+    el('c-num').textContent = sc[1]; el('c-ttl').textContent = sc[2]; el('c-dsc').textContent = sc[3];
+  }
+  // rows
+  setRow('r-det', S.detected?'c-on':'c-off', S.detected?'ACTIVE':'STANDBY', true);
+  setRow('r-trk', S.tracking?'c-on':'c-off', S.tracking?'ACTIVE':'STANDBY', true);
+  const rl = S.risk>0.66?['c-rd','HIGH']:(S.risk>0.33?['c-am','MEDIUM']:['c-on','LOW']);
+  setRow('r-risk', rl[0]+(S.risk>0.66?' blink':''), rl[1], true);
+  const d = S.dist;
+  const trend = (!S.detected)?'':(d < S.prevDist-0.001 ? ' ▼' : (d > S.prevDist+0.001 ? ' ▲' : ' ●'));
+  setRow('r-dist', S.risk>0.66?'c-rd':'c-cy',
+    (S.detected ? Math.max(0,d).toFixed(1)+' m'+trend : '— m'), false);
+  setRow('r-ttc', S.ttc<4?'c-rd':(S.ttc<8?'c-am':'c-cy'),
+    (S.detected && S.ttc<50 ? S.ttc.toFixed(1)+' s' : '— s'), false);
+  setRow('r-plan', S.committed?'c-on':(S.planning?'c-am':'c-off'),
+    S.committed?'EXECUTING':(S.planning?'COMPUTING':'IDLE'), true);
+  setRow('r-lane', S.cleared?'c-on':(S.committed?'c-am':(S.planning?'c-am':'c-off')),
+    S.cleared?'LANE 2 (HELD)':(S.committed?'LANE 2 (MOVING)':(S.planning?'LANE 2 (CLEAR)':'LANE 1 (HOLD)')), false);
+
+  // gauges
+  el('g-spd').textContent = (ego.v*3.6).toFixed(0);
+  el('spdbar').firstElementChild.style.width = clamp(ego.v/30,0,1)*100 + '%';
+  el('g-risk').textContent = Math.round(S.risk*100)+'%';
+  el('riskbar').firstElementChild.style.width = S.risk*100 + '%';
+
+  // banner
+  let bt='', bc='';
+  if(t>=T.detect && t<T.track){ bt='OBJECT DETECTED — VEHICLE IN EGO LANE'; bc='#3fe0ff'; }
+  else if(t>=T.track && t<T.brake){ bt='TRACKING TARGET — COLLISION RISK RISING'; bc='#ffc24a'; }
+  else if(t>=T.brake && t<T.plan){ bt='COLLISION RISK DETECTED → PLANNING SAFE TRAJECTORY'; bc='#ff4f60'; }
+  else if(t>=T.plan && t<T.exec){ bt='ADJACENT LANE CLEAR → TRAJECTORY GENERATED'; bc='#3dffa8'; }
+  else if(t>=T.exec && t<T.safe){ bt='EXECUTING LANE CHANGE — FOLLOWING PLANNED PATH'; bc='#3dffa8'; }
+  else if(t>=T.safe && t<T.safe+3.5){ bt='OBSTACLE AVOIDED — RESUMING CRUISE SPEED'; bc='#3dffa8'; }
+  const b = el('banner');
+  if(bt){ b.classList.add('show'); b.style.color = bc; el('banner-t').textContent = bt; }
+  else b.classList.remove('show');
+
+  // final summary
+  if(t >= T.summary){
+    el('final').classList.add('show');
+    for(let i=0;i<4;i++) if(t >= T.summary + i*0.45) el('f'+i).classList.add('on');
+  }
+
+  // timeline
+  el('time').textContent = t.toFixed(1).padStart(4,'0') + ' / ' + DURATION.toFixed(1) + 's';
+  el('prog').firstElementChild.style.width = clamp(t/DURATION,0,1)*100 + '%';
+
+  fpsAcc += dt; fpsN++;
+  if(fpsAcc > 0.5){ el('fps').textContent = Math.round(fpsN/fpsAcc)+' FPS'; fpsAcc=0; fpsN=0; }
+
+  radar();
+}
+
+/* ---------- mini radar ---------- */
+const rc = el('radar'), rx = rc.getContext('2d');
+function radar(){
+  const W = rc.width = rc.clientWidth*2, H = rc.height = rc.clientHeight*2;
+  rx.clearRect(0,0,W,H);
+  const AHEAD=130, BEHIND=35, m2y = z => H - ((z + BEHIND)/(AHEAD+BEHIND))*H;
+  const m2x = x => W/2 + (x/9)*(W/2);
+  // lanes
+  rx.fillStyle='rgba(255,255,255,.05)'; rx.fillRect(m2x(-5.4),0,m2x(5.4)-m2x(-5.4),H);
+  rx.strokeStyle='rgba(255,255,255,.22)'; rx.lineWidth=2;
+  [-5.4,5.4].forEach(x=>{ rx.beginPath(); rx.moveTo(m2x(x),0); rx.lineTo(m2x(x),H); rx.stroke(); });
+  rx.setLineDash([8,10]); rx.strokeStyle='rgba(255,255,255,.3)';
+  rx.beginPath(); rx.moveTo(m2x(0),0); rx.lineTo(m2x(0),H); rx.stroke(); rx.setLineDash([]);
+  // planned path
+  if(pathFill.material.opacity>0.02){
+    rx.strokeStyle='rgba(61,255,168,.9)'; rx.lineWidth=4; rx.beginPath();
+    for(let i=0;i<=24;i++){
+      const z = ego.z + (i/24)*110, x = pathXat(z);
+      const px=m2x(x), py=m2y(z-ego.z); i?rx.lineTo(px,py):rx.moveTo(px,py);
+    }
+    rx.stroke();
+  }
+  // vehicles
+  for(const c of V){
+    const rz = c.z - ego.z;
+    if(rz < -BEHIND || rz > AHEAD) continue;
+    const px = m2x(c.x), py = m2y(rz);
+    const w = 14, h = Math.max(10, c.len*1.4);
+    rx.fillStyle = c.isEgo ? '#3fe0ff' : (c.isObs ? (S.risk>0.6?'#ff4f60':'#ffc24a') : 'rgba(220,235,245,.55)');
+    rx.fillRect(px-w/2, py-h/2, w, h);
+    if(c.isEgo){ rx.strokeStyle='rgba(63,224,255,.5)'; rx.lineWidth=3;
+      rx.beginPath(); rx.arc(px,py,17,0,7); rx.stroke(); }
+  }
+  rx.fillStyle='rgba(225,242,248,.45)'; rx.font='18px "JetBrains Mono", monospace';
+  rx.fillText('BEV', 10, 24);
+}
+
+/* ============================ LOOP ============================ */
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  let dt = Math.min((now-last)/1000, 0.05); last = now;
+  if(S.playing){
+    if(S.t >= DURATION + 2.5) resetSim();
+    step(dt);
+  }
+  hud(dt);
+  renderer.render(scene, camera);
+}
+resetSim();
+requestAnimationFrame(frame);
+
+/* ============================ CONTROLS ============================ */
+el('b-play').onclick = e => { S.playing = !S.playing; e.target.textContent = S.playing?'⏸ PAUSE':'▶ PLAY'; };
+el('b-restart').onclick = () => { resetSim(); S.playing = true; el('b-play').textContent='⏸ PAUSE'; };
+document.querySelectorAll('.cam').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.cam').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); S.cam = b.dataset.cam;
+});
+el('b-hud').onclick = e => {
+  const h = el('hud'); h.classList.toggle('hidden');
+  e.target.textContent = h.classList.contains('hidden') ? 'SHOW HUD' : 'HIDE HUD';
+};
+window.addEventListener('keydown', e => {
+  if(e.code==='Space'){ e.preventDefault(); el('b-play').click(); }
+  if(e.key==='r'||e.key==='R') el('b-restart').click();
+  if(e.key==='h'||e.key==='H') el('b-hud').click();
+  if(e.key==='1') document.querySelector('[data-cam=chase]').click();
+  if(e.key==='2') document.querySelector('[data-cam=cine]').click();
+  if(e.key==='3') document.querySelector('[data-cam=top]').click();
+});
+})();
+</script>
+</body>
+</html>
